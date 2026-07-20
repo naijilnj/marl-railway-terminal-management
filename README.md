@@ -1,4 +1,4 @@
-# Railway Terminal MARL — System Architecture Reference
+# Railway Terminal MARL - System Architecture Reference
 
 ## 1. Overview
 
