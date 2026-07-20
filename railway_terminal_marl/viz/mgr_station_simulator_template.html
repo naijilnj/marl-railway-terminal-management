@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MGR Chennai Central — Terminus Simulation</title>
+<style>
+  :root {
+    --bg: #0a0e13;
+    --panel: #10161d;
+    --panel-alt: #0d131a;
+    --panel-border: #1e2932;
+    --tile: #05070a;
+    --amber: #ffb000;
+    --gold: #ffd54f;
+    --cyan: #4fd1e8;
+    --green: #3ecf6e;
+    --red: #e5484d;
+    --text: #d7dee5;
+    --text-dim: #6b7d8f;
+    --mono: 'Space Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 18px 40px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+  h1 { font-family: var(--mono); font-size: 21px; font-weight: 700; margin: 0 0 4px 0; color: var(--amber); letter-spacing: 0.02em; }
+  .subtitle { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-bottom: 18px; }
+
+  .board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--tile); border: 1px solid var(--panel-border); border-radius: 4px; padding: 9px 11px; position: relative; overflow: hidden; }
+  .tile::after { content: ""; position: absolute; left:0; right:0; top:50%; height:1px; background: rgba(0,0,0,0.6); }
+  .tile .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 3px; }
+  .tile .value { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; line-height: 1; }
+  .tile.served .value { color: var(--green); }
+  .tile.conflict .value { color: var(--red); }
+
+  .ticker {
+    font-family: var(--mono); font-size: 12px; background: var(--tile); border: 1px solid var(--panel-border);
+    border-radius: 4px; padding: 9px 14px; color: var(--gold); margin-bottom: 16px; letter-spacing: 0.03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ticker .dim { color: var(--text-dim); }
+
+  .station { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .station { grid-template-columns: 1fr; } }
+
+  .terminal-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px 14px 10px; }
+  .terminal-panel h2 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase;
+    margin: 0 0 10px 0; font-weight: 700; display: flex; justify-content: space-between;
+  }
+  .terminal-panel h2 span.count { color: var(--amber); }
+
+  .bay {
+    display: grid; grid-template-columns: 46px 1fr 14px; align-items: center; gap: 10px;
+    background: var(--panel-alt); border: 1px solid var(--panel-border); border-radius: 5px;
+    padding: 7px 9px; margin-bottom: 6px; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .bay.conflict-flash { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+  .bay .pf-label { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); text-align: center; }
+  .bay .pf-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-align: center; margin-top: 1px; }
+  .bay .occupant { min-width: 0; }
+  .bay .occupant .train-name { font-family: var(--mono); font-size: 11px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bay .occupant .vacant { font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-style: normal; letter-spacing: 0.08em; }
+  .bay .occupant .dwell-bar { height: 3px; background: var(--panel-border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .bay .occupant .dwell-fill { height: 100%; border-radius: 2px; }
+  .bay .signal { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto; }
+  .signal.free { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .signal.busy { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .cat-premium { color: var(--gold); } .fill-premium { background: var(--gold); }
+  .cat-express { color: var(--amber); } .fill-express { background: var(--amber); }
+  .cat-suburban { color: var(--green); } .fill-suburban { background: var(--green); }
+
+  .legend { display: flex; gap: 16px; margin: 14px 0 4px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  .controls { display: flex; align-items: center; gap: 14px; margin-top: 6px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px 16px; }
+  button.playbtn { font-family: var(--mono); background: var(--amber); color: #14100a; border: none; border-radius: 4px; padding: 8px 18px; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; font-size: 12px; text-transform: uppercase; }
+  button.playbtn:hover { filter: brightness(1.1); }
+  input[type=range] { flex: 1; accent-color: var(--amber); min-width: 160px; }
+  select { font-family: var(--mono); background: var(--tile); color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 6px 8px; font-size: 12px; }
+  .scrub-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); min-width: 70px; text-align: right; }
+  .footnote { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 12px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">MAS &middot; Southern Railway &middot; MARL Platform Allocation</div>
+  <h1>MGR CHENNAI CENTRAL — TERMINUS SIMULATION</h1>
+  <div class="subtitle">Replay of one deterministic rollout from the trained (shared) PPO policy &middot; 17 platforms &middot; 12 main terminal + 5 suburban terminal (Moore Market Complex)</div>
+
+  <div class="board">
+    <div class="tile"><div class="label">Time</div><div class="value" id="tTime">000</div></div>
+    <div class="tile"><div class="label">Waiting</div><div class="value" id="tWaiting">00</div></div>
+    <div class="tile served"><div class="label">Served</div><div class="value" id="tServed">00</div></div>
+    <div class="tile conflict"><div class="label">Conflicts</div><div class="value" id="tConflicts">00</div></div>
+    <div class="tile"><div class="label">Avg Wait</div><div class="value" id="tAvgWait">0.0</div></div>
+  </div>
+
+  <div class="ticker" id="ticker"><span class="dim">AWAITING FIRST ALLOCATION&hellip;</span></div>
+
+  <div class="station">
+    <div class="terminal-panel">
+      <h2>MAIN TERMINAL <span class="count" id="mainCount">0/12 occupied</span></h2>
+      <div id="mainBays"></div>
+    </div>
+    <div class="terminal-panel">
+      <h2>SUBURBAN TERMINAL — MOORE MARKET COMPLEX <span class="count" id="suburbanCount">0/5 occupied</span></h2>
+      <div id="suburbanBays"></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="swatch" style="background:var(--gold)"></span> Premium (Rajdhani / Shatabdi)</div>
+    <div class="item"><span class="swatch" style="background:var(--amber)"></span> Express / Mail</div>
+    <div class="item"><span class="swatch" style="background:var(--green)"></span> Suburban EMU</div>
+    <div class="item"><span class="swatch" style="background:var(--red)"></span> Allocation conflict this instant</div>
+  </div>
+
+  <div class="controls">
+    <button class="playbtn" id="playBtn">Play</button>
+    <span class="scrub-label" id="scrubLabel">t = 0</span>
+    <input type="range" id="scrub" min="0" max="100" value="0" step="1" />
+    <select id="speed">
+      <option value="4">4 steps/s</option>
+      <option value="8" selected>8 steps/s</option>
+      <option value="16">16 steps/s</option>
+      <option value="32">32 steps/s</option>
+    </select>
+  </div>
+  <div class="footnote">
+    Platform structure approximates MGR Chennai Central's real layout (17 platforms: 12 in the main
+    building — including the short bay platform "2A" used for premium short-rake trains — plus 5 at the
+    Moore Market Complex for suburban EMU services). Train names, schedules, and platform assignments
+    below are illustrative, generated for this simulation, not pulled from a live timetable.
+  </div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const scenario = DATA.scenario;
+const allEvents = DATA.events;
+const allocations = allEvents.filter(e => e.type === 'allocate');
+const conflictEvents = allEvents.filter(e => e.type === 'conflict');
+const horizon = scenario.horizon;
+const platforms = scenario.platforms;
+const mainPlatforms = platforms.filter(p => p.section === 'main');
+const suburbanPlatforms = platforms.filter(p => p.section === 'suburban');
+
+function catClass(cat) {
+  if (cat === 'Premium') return { text: 'cat-premium', fill: 'fill-premium' };
+  if (cat === 'Suburban EMU') return { text: 'cat-suburban', fill: 'fill-suburban' };
+  return { text: 'cat-express', fill: 'fill-express' };
+}
+
+function renderBays(container, plist) {
+  container.innerHTML = plist.map(p => `
+    <div class="bay" id="bay-${p.id}">
+      <div>
+        <div class="pf-label">PF ${p.label}</div>
+        <div class="pf-meta">${p.length_class}${p.electrified ? ' \u26a1' : ''}</div>
+      </div>
+      <div class="occupant" id="occ-${p.id}"><span class="vacant">&mdash; vacant &mdash;</span></div>
+      <div class="signal free" id="sig-${p.id}"></div>
+    </div>
+  `).join('');
+}
+renderBays(document.getElementById('mainBays'), mainPlatforms);
+renderBays(document.getElementById('suburbanBays'), suburbanPlatforms);
+
+const scrub = document.getElementById('scrub');
+scrub.max = horizon;
+const scrubLabel = document.getElementById('scrubLabel');
+const playBtn = document.getElementById('playBtn');
+const speedSel = document.getElementById('speed');
+const ticker = document.getElementById('ticker');
+const tTime = document.getElementById('tTime');
+const tWaiting = document.getElementById('tWaiting');
+const tServed = document.getElementById('tServed');
+const tConflicts = document.getElementById('tConflicts');
+const tAvgWait = document.getElementById('tAvgWait');
+const mainCount = document.getElementById('mainCount');
+const suburbanCount = document.getElementById('suburbanCount');
+
+let lastTickerEventIdx = -1;
+
+function updateReadouts(tt) {
+  scrub.value = tt;
+  scrubLabel.textContent = `t = ${tt}`;
+  tTime.textContent = String(tt).padStart(3, '0');
+
+  let waiting = 0, served = 0, totalWait = 0, conflictsSoFar = 0;
+  const occByPlatform = {};
+  allocations.forEach(ev => {
+    const arrival = ev.t - ev.wait;
+    if (ev.t <= tt) { served++; totalWait += ev.wait; }
+    if (arrival <= tt && ev.t > tt) waiting++;
+    if (ev.t <= tt && ev.t + ev.dwell > tt) occByPlatform[ev.platform] = ev;
+  });
+  conflictEvents.forEach(ev => { if (ev.t <= tt) conflictsSoFar++; });
+
+  tWaiting.textContent = String(waiting).padStart(2, '0');
+  tServed.textContent = String(served).padStart(2, '0');
+  tAvgWait.textContent = served ? (totalWait / served).toFixed(1) : '0.0';
+  tConflicts.textContent = String(conflictsSoFar).padStart(3, '0');
+
+  let mainOccupied = 0, suburbanOccupied = 0;
+  platforms.forEach(p => {
+    const bay = document.getElementById(`bay-${p.id}`);
+    const occ = document.getElementById(`occ-${p.id}`);
+    const sig = document.getElementById(`sig-${p.id}`);
+    const ev = occByPlatform[p.id];
+    if (ev) {
+      const cls = catClass(ev.category);
+      const remaining = Math.max(0, (ev.t + ev.dwell) - tt);
+      const pct = Math.round(100 * remaining / ev.dwell);
+      occ.innerHTML = `<div class="train-name ${cls.text}">${ev.train_label}</div>
+        <div class="dwell-bar"><div class="dwell-fill ${cls.fill}" style="width:${pct}%"></div></div>`;
+      sig.className = 'signal busy';
+      if (p.section === 'main') mainOccupied++; else suburbanOccupied++;
+    } else {
+      occ.innerHTML = `<span class="vacant">&mdash; vacant &mdash;</span>`;
+      sig.className = 'signal free';
+    }
+    const conflictNow = conflictEvents.some(c => c.platform === p.id && c.t === tt);
+    bay.classList.toggle('conflict-flash', conflictNow);
+  });
+  mainCount.textContent = `${mainOccupied}/${mainPlatforms.length} occupied`;
+  suburbanCount.textContent = `${suburbanOccupied}/${suburbanPlatforms.length} occupied`;
+
+  // ticker: most recent allocation at or before tt
+  let latest = null;
+  for (let i = allocations.length - 1; i >= 0; i--) {
+    if (allocations[i].t <= tt) { latest = allocations[i]; break; }
+  }
+  if (latest) {
+    const cls = catClass(latest.category);
+    ticker.innerHTML = `<span class="${cls.text}">PF ${latest.platform_label} \u2192 ${latest.train_label}</span> <span class="dim">&middot; ${latest.category} &middot; waited ${latest.wait} steps &middot; dwell ${latest.dwell} steps</span>`;
+  }
+}
+updateReadouts(0);
+
+let playing = false, t = 0, acc = 0, lastFrame = null;
+function frame(now) {
+  if (!playing) return;
+  if (lastFrame === null) lastFrame = now;
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  const stepsPerSec = parseFloat(speedSel.value);
+  acc += dt * stepsPerSec;
+  while (acc >= 1 && t < horizon) { t += 1; acc -= 1; }
+  updateReadouts(t);
+  if (t >= horizon) { playing = false; playBtn.textContent = 'Replay'; return; }
+  requestAnimationFrame(frame);
+}
+playBtn.addEventListener('click', () => {
+  if (t >= horizon) t = 0;
+  playing = !playing;
+  playBtn.textContent = playing ? 'Pause' : 'Play';
+  if (playing) { lastFrame = null; requestAnimationFrame(frame); }
+});
+scrub.addEventListener('input', () => {
+  playing = false; playBtn.textContent = 'Play';
+  t = parseInt(scrub.value, 10);
+  updateReadouts(t);
+});
+</script>
+</body>
+</html>

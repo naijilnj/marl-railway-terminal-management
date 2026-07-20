@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MGR Chennai Central — Signal Board</title>
+<style>
+  :root {
+    --bg: #05070a; --panel: #0c1117; --panel-border: #1c2933; --tile: #05070a;
+    --amber: #ffb000; --gold: #ffd54f; --cyan: #4fd1e8; --green: #3ecf6e; --red: #e5484d;
+    --text: #d7dee5; --text-dim: #55707f;
+    --mono: 'Space Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 22px 18px 40px; }
+  .nav { font-family: var(--mono); font-size: 11px; margin-bottom: 12px; }
+  .nav a { color: var(--cyan); text-decoration: none; margin-right: 16px; }
+  .topbar { display:flex; justify-content: space-between; align-items:flex-start; margin-bottom: 14px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; color: var(--text-dim); text-transform: uppercase; }
+  h1 { font-family: var(--mono); font-size: 20px; font-weight: 700; margin: 4px 0; color: var(--amber); letter-spacing: 0.02em; }
+  .live-badge { display:flex; align-items:center; gap:7px; font-family: var(--mono); font-size: 11px; letter-spacing:0.1em; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--panel-border); background: var(--tile); height: fit-content; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.4s infinite; }
+  .live-dot.down { background: var(--red); animation:none; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  .board-wrap { position: relative; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; }
+  svg { display:block; width: 100%; height: auto; }
+  .trunk-label { font-family: var(--mono); font-size: 12px; fill: var(--text-dim); letter-spacing: 0.08em; }
+  .branch-vacant { stroke: #2a3944; stroke-width: 2.5; stroke-dasharray: 6 5; fill: none; }
+  .branch-occ { stroke-width: 4; fill: none; }
+  .buffer { stroke: var(--text-dim); stroke-width: 3; }
+  .sig { r: 5; }
+  .sig.free { fill: var(--green); filter: drop-shadow(0 0 3px var(--green)); }
+  .sig.busy { fill: var(--red); filter: drop-shadow(0 0 3px var(--red)); }
+  .pf-tag { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--text); }
+  .train-tag { font-family: var(--mono); font-size: 10px; }
+  .cat-premium { fill: var(--gold); stroke: var(--gold); } .stroke-premium { stroke: var(--gold); }
+  .cat-express { fill: var(--amber); stroke: var(--amber); } .stroke-express { stroke: var(--amber); }
+  .cat-suburban { fill: var(--green); stroke: var(--green); } .stroke-suburban { stroke: var(--green); }
+  .conflict-glow { stroke: var(--red) !important; filter: drop-shadow(0 0 5px var(--red)); }
+
+  .alert-box {
+    position: absolute; left: 20px; bottom: 20px; width: 300px; background: #0a1622;
+    border: 1px solid #2a4a5e; border-radius: 6px; overflow: hidden; box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  }
+  .alert-head { background: #123044; padding: 6px 10px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--cyan); display:flex; align-items:center; gap:6px; }
+  .alert-head .sq { width:8px; height:8px; background: var(--red); display:inline-block; border-radius:1px; }
+  .alert-body { padding: 8px 10px; max-height: 220px; overflow-y: auto; }
+  .alert-item { font-family: var(--mono); font-size: 10.5px; padding: 6px 4px; border-bottom: 1px solid #16232c; }
+  .alert-item:last-child { border-bottom: none; }
+  .alert-item .pf { color: var(--gold); font-weight:700; }
+  .alert-item .status { color: var(--red); letter-spacing: 0.05em; }
+  .alert-empty { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); padding: 6px 4px; }
+
+  .legend { display: flex; gap: 16px; margin: 14px 0 0; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .swatch-line { width: 16px; height: 3px; display: inline-block; border-radius:2px; }
+  .footnote { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 14px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="/">&larr; server home</a><a href="/station">&larr; station bay view</a></div>
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">MAS &middot; Southern Railway &middot; Interlocking / Platform Signalling</div>
+      <h1>MGR CHENNAI CENTRAL — SIGNAL BOARD</h1>
+    </div>
+    <div class="live-badge"><div class="live-dot" id="liveDot"></div><span id="liveLabel">CONNECTING</span></div>
+  </div>
+
+  <div class="board-wrap">
+    <svg id="board" viewBox="0 0 1200 640" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="alert-box">
+      <div class="alert-head"><span class="sq"></span> SIGNAL ALERTS — PLATFORM CONTENTION</div>
+      <div class="alert-body" id="alertBody"><div class="alert-empty">No contention events yet.</div></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="swatch-line" style="background:var(--gold)"></span> Premium occupied</div>
+    <div class="item"><span class="swatch-line" style="background:var(--amber)"></span> Express occupied</div>
+    <div class="item"><span class="swatch-line" style="background:var(--green)"></span> Suburban occupied</div>
+    <div class="item"><span class="swatch-line" style="background:#2a3944"></span> Track clear</div>
+    <div class="item"><span class="swatch-line" style="background:var(--red)"></span> Contention this instant</div>
+  </div>
+  <div class="footnote">
+    Each branch is one platform's approach + buffer stop. Signal head glows green when the platform is
+    clear, red when occupied. This models platform occupancy, not real block/interlocking signalling —
+    the underlying agents only decide platform allocation (see the assistant's explanation in chat for
+    what the agents do and don't model).
+  </div>
+</div>
+
+<script>
+const W = 1200, H = 640;
+const junctionX = 170, endX = 1040;
+const mainBandTop = 30, mainBandBottom = 330;
+const subBandTop = 380, subBandBottom = 600;
+
+let platformOrder = null; // [{id, section, index-within-section, y}]
+const svg = document.getElementById('board');
+
+function layout(platforms) {
+  const mains = platforms.filter(p => p.section === 'main');
+  const subs = platforms.filter(p => p.section === 'suburban');
+  const ys = {};
+  mains.forEach((p, i) => { ys[p.id] = mainBandTop + (i + 0.5) * (mainBandBottom - mainBandTop) / mains.length; });
+  subs.forEach((p, i) => { ys[p.id] = subBandTop + (i + 0.5) * (subBandBottom - subBandTop) / subs.length; });
+  return { mains, subs, ys };
+}
+
+function catInfo(cat) {
+  if (cat === 'Premium') return 'cat-premium';
+  if (cat === 'Suburban EMU') return 'cat-suburban';
+  return 'cat-express';
+}
+function catStroke(cat) {
+  if (cat === 'Premium') return 'stroke-premium';
+  if (cat === 'Suburban EMU') return 'stroke-suburban';
+  return 'stroke-express';
+}
+
+function buildStatic(platforms) {
+  const { mains, subs, ys } = layout(platforms);
+  platformOrder = { mains, subs, ys };
+  let s = '';
+
+  // trunks
+  const mainTrunkY = (mainBandTop + mainBandBottom) / 2;
+  const subTrunkY = (subBandTop + subBandBottom) / 2;
+  s += `<path d="M20,${mainTrunkY} L${junctionX},${mainTrunkY}" class="branch-vacant"></path>`;
+  s += `<text class="trunk-label" x="24" y="${mainTrunkY - 10}">MAIN LINE APPROACH</text>`;
+  s += `<path d="M20,${subTrunkY} L${junctionX},${subTrunkY}" class="branch-vacant"></path>`;
+  s += `<text class="trunk-label" x="24" y="${subTrunkY - 10}">SUBURBAN APPROACH &middot; MOORE MARKET</text>`;
+
+  [...mains, ...subs].forEach(p => {
+    const y = ys[p.id];
+    const trunkY = p.section === 'main' ? mainTrunkY : subTrunkY;
+    s += `<path id="branch-${p.id}" d="M${junctionX},${trunkY} C${junctionX+120},${trunkY} ${junctionX+120},${y} ${endX-40},${y}" class="branch-vacant"></path>`;
+    // buffer stop tick
+    s += `<line x1="${endX-6}" y1="${y-10}" x2="${endX-6}" y2="${y+10}" class="buffer"></line>`;
+    // signal head
+    s += `<circle id="sig-${p.id}" class="sig free" cx="${endX-22}" cy="${y}"></circle>`;
+    // platform tag
+    s += `<text class="pf-tag" x="${endX+6}" y="${y+4}">PF ${p.label}</text>`;
+    // train label (populated live)
+    s += `<text id="train-${p.id}" class="train-tag" x="${endX+6}" y="${y+18}"></text>`;
+  });
+  svg.innerHTML = s;
+}
+
+function render(state) {
+  if (!platformOrder) buildStatic(state.platforms);
+  const conflictNow = new Set(state.events.filter(e => e.type === 'conflict' && e.tick === state.tick).map(e => e.platform));
+
+  state.platforms.forEach(p => {
+    const branch = document.getElementById(`branch-${p.id}`);
+    const sig = document.getElementById(`sig-${p.id}`);
+    const trainText = document.getElementById(`train-${p.id}`);
+    const isConflict = conflictNow.has(p.id);
+    if (p.occupant) {
+      branch.setAttribute('class', `branch-occ ${catStroke(p.occupant.category)}` + (isConflict ? ' conflict-glow' : ''));
+      sig.setAttribute('class', `sig busy`);
+      trainText.setAttribute('class', `train-tag ${catInfo(p.occupant.category)}`);
+      trainText.textContent = p.occupant.train_label;
+    } else {
+      branch.setAttribute('class', 'branch-vacant' + (isConflict ? ' conflict-glow' : ''));
+      sig.setAttribute('class', 'sig free');
+      trainText.textContent = '';
+    }
+  });
+
+  // alert panel: most recent conflicts (last 6), most recent first
+  const conflicts = state.events.filter(e => e.type === 'conflict').slice(-6).reverse();
+  const body = document.getElementById('alertBody');
+  if (!conflicts.length) {
+    body.innerHTML = '<div class="alert-empty">No contention events yet.</div>';
+  } else {
+    body.innerHTML = conflicts.map(c => `
+      <div class="alert-item">
+        <div><span class="pf">PF ${c.platform_label}</span> &middot; bid on <b>${c.train_label}</b></div>
+        <div class="status">STATUS: LOST BID — REASSIGNED ELSEWHERE &middot; t=${c.t}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${proto}//${location.host}/ws`);
+  const dot = document.getElementById('liveDot');
+  const label = document.getElementById('liveLabel');
+  ws.onopen = () => { dot.classList.remove('down'); label.textContent = 'LIVE'; };
+  ws.onclose = () => { dot.classList.add('down'); label.textContent = 'RECONNECTING'; setTimeout(connect, 1500); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (msg) => render(JSON.parse(msg.data));
+}
+connect();
+</script>
+</body>
+</html>

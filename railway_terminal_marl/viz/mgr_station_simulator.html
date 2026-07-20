@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MGR Chennai Central — Terminus Simulation</title>
+<style>
+  :root {
+    --bg: #0a0e13;
+    --panel: #10161d;
+    --panel-alt: #0d131a;
+    --panel-border: #1e2932;
+    --tile: #05070a;
+    --amber: #ffb000;
+    --gold: #ffd54f;
+    --cyan: #4fd1e8;
+    --green: #3ecf6e;
+    --red: #e5484d;
+    --text: #d7dee5;
+    --text-dim: #6b7d8f;
+    --mono: 'Space Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 18px 40px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+  h1 { font-family: var(--mono); font-size: 21px; font-weight: 700; margin: 0 0 4px 0; color: var(--amber); letter-spacing: 0.02em; }
+  .subtitle { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-bottom: 18px; }
+
+  .board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--tile); border: 1px solid var(--panel-border); border-radius: 4px; padding: 9px 11px; position: relative; overflow: hidden; }
+  .tile::after { content: ""; position: absolute; left:0; right:0; top:50%; height:1px; background: rgba(0,0,0,0.6); }
+  .tile .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 3px; }
+  .tile .value { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; line-height: 1; }
+  .tile.served .value { color: var(--green); }
+  .tile.conflict .value { color: var(--red); }
+
+  .ticker {
+    font-family: var(--mono); font-size: 12px; background: var(--tile); border: 1px solid var(--panel-border);
+    border-radius: 4px; padding: 9px 14px; color: var(--gold); margin-bottom: 16px; letter-spacing: 0.03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ticker .dim { color: var(--text-dim); }
+
+  .station { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .station { grid-template-columns: 1fr; } }
+
+  .terminal-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px 14px 10px; }
+  .terminal-panel h2 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase;
+    margin: 0 0 10px 0; font-weight: 700; display: flex; justify-content: space-between;
+  }
+  .terminal-panel h2 span.count { color: var(--amber); }
+
+  .bay {
+    display: grid; grid-template-columns: 46px 1fr 14px; align-items: center; gap: 10px;
+    background: var(--panel-alt); border: 1px solid var(--panel-border); border-radius: 5px;
+    padding: 7px 9px; margin-bottom: 6px; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .bay.conflict-flash { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+  .bay .pf-label { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); text-align: center; }
+  .bay .pf-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-align: center; margin-top: 1px; }
+  .bay .occupant { min-width: 0; }
+  .bay .occupant .train-name { font-family: var(--mono); font-size: 11px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bay .occupant .vacant { font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-style: normal; letter-spacing: 0.08em; }
+  .bay .occupant .dwell-bar { height: 3px; background: var(--panel-border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .bay .occupant .dwell-fill { height: 100%; border-radius: 2px; }
+  .bay .signal { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto; }
+  .signal.free { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .signal.busy { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .cat-premium { color: var(--gold); } .fill-premium { background: var(--gold); }
+  .cat-express { color: var(--amber); } .fill-express { background: var(--amber); }
+  .cat-suburban { color: var(--green); } .fill-suburban { background: var(--green); }
+
+  .legend { display: flex; gap: 16px; margin: 14px 0 4px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  .controls { display: flex; align-items: center; gap: 14px; margin-top: 6px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px 16px; }
+  button.playbtn { font-family: var(--mono); background: var(--amber); color: #14100a; border: none; border-radius: 4px; padding: 8px 18px; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; font-size: 12px; text-transform: uppercase; }
+  button.playbtn:hover { filter: brightness(1.1); }
+  input[type=range] { flex: 1; accent-color: var(--amber); min-width: 160px; }
+  select { font-family: var(--mono); background: var(--tile); color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 6px 8px; font-size: 12px; }
+  .scrub-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); min-width: 70px; text-align: right; }
+  .footnote { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 12px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">MAS &middot; Southern Railway &middot; MARL Platform Allocation</div>
+  <h1>MGR CHENNAI CENTRAL — TERMINUS SIMULATION</h1>
+  <div class="subtitle">Replay of one deterministic rollout from the trained (shared) PPO policy &middot; 17 platforms &middot; 12 main terminal + 5 suburban terminal (Moore Market Complex)</div>
+
+  <div class="board">
+    <div class="tile"><div class="label">Time</div><div class="value" id="tTime">000</div></div>
+    <div class="tile"><div class="label">Waiting</div><div class="value" id="tWaiting">00</div></div>
+    <div class="tile served"><div class="label">Served</div><div class="value" id="tServed">00</div></div>
+    <div class="tile conflict"><div class="label">Conflicts</div><div class="value" id="tConflicts">00</div></div>
+    <div class="tile"><div class="label">Avg Wait</div><div class="value" id="tAvgWait">0.0</div></div>
+  </div>
+
+  <div class="ticker" id="ticker"><span class="dim">AWAITING FIRST ALLOCATION&hellip;</span></div>
+
+  <div class="station">
+    <div class="terminal-panel">
+      <h2>MAIN TERMINAL <span class="count" id="mainCount">0/12 occupied</span></h2>
+      <div id="mainBays"></div>
+    </div>
+    <div class="terminal-panel">
+      <h2>SUBURBAN TERMINAL — MOORE MARKET COMPLEX <span class="count" id="suburbanCount">0/5 occupied</span></h2>
+      <div id="suburbanBays"></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="swatch" style="background:var(--gold)"></span> Premium (Rajdhani / Shatabdi)</div>
+    <div class="item"><span class="swatch" style="background:var(--amber)"></span> Express / Mail</div>
+    <div class="item"><span class="swatch" style="background:var(--green)"></span> Suburban EMU</div>
+    <div class="item"><span class="swatch" style="background:var(--red)"></span> Allocation conflict this instant</div>
+  </div>
+
+  <div class="controls">
+    <button class="playbtn" id="playBtn">Play</button>
+    <span class="scrub-label" id="scrubLabel">t = 0</span>
+    <input type="range" id="scrub" min="0" max="100" value="0" step="1" />
+    <select id="speed">
+      <option value="4">4 steps/s</option>
+      <option value="8" selected>8 steps/s</option>
+      <option value="16">16 steps/s</option>
+      <option value="32">32 steps/s</option>
+    </select>
+  </div>
+  <div class="footnote">
+    Platform structure approximates MGR Chennai Central's real layout (17 platforms: 12 in the main
+    building — including the short bay platform "2A" used for premium short-rake trains — plus 5 at the
+    Moore Market Complex for suburban EMU services). Train names, schedules, and platform assignments
+    below are illustrative, generated for this simulation, not pulled from a live timetable.
+  </div>
+</div>
+
+<script>
+const DATA = {"scenario": {"horizon": 366, "platforms": [{"id": 0, "label": "1", "section": "main", "length_class": "long", "electrified": true}, {"id": 1, "label": "2A", "section": "main", "length_class": "short", "electrified": true}, {"id": 2, "label": "3", "section": "main", "length_class": "long", "electrified": true}, {"id": 3, "label": "4", "section": "main", "length_class": "long", "electrified": true}, {"id": 4, "label": "5", "section": "main", "length_class": "long", "electrified": true}, {"id": 5, "label": "6", "section": "main", "length_class": "long", "electrified": true}, {"id": 6, "label": "7", "section": "main", "length_class": "long", "electrified": true}, {"id": 7, "label": "8", "section": "main", "length_class": "long", "electrified": true}, {"id": 8, "label": "9", "section": "main", "length_class": "long", "electrified": true}, {"id": 9, "label": "10", "section": "main", "length_class": "long", "electrified": true}, {"id": 10, "label": "11", "section": "main", "length_class": "long", "electrified": true}, {"id": 11, "label": "12", "section": "main", "length_class": "long", "electrified": true}, {"id": 12, "label": "13", "section": "suburban", "length_class": "medium", "electrified": true}, {"id": 13, "label": "14", "section": "suburban", "length_class": "medium", "electrified": true}, {"id": 14, "label": "15", "section": "suburban", "length_class": "medium", "electrified": true}, {"id": 15, "label": "16", "section": "suburban", "length_class": "medium", "electrified": true}, {"id": 16, "label": "17", "section": "suburban", "length_class": "medium", "electrified": true}], "total_trains": 62}, "episode_metrics": {"avg_wait": 5.838709677419355, "trains_served": 62, "total_trains": 62, "invalid_actions": 5255, "conflicts": 4, "episode_length": 366}, "events": [{"t": 4, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 16, "train_label": "Tambaram Local #16", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 4, "length_class": "medium"}, {"t": 10, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 17, "train_label": "Avadi Local #17", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 4, "length_class": "medium"}, {"t": 15, "type": "conflict", "platform": 13, "platform_label": "14", "train": 0, "train_label": "22638 Nagercoil Exp #0"}, {"t": 15, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 0, "train_label": "22638 Nagercoil Exp #0", "category": "Express", "priority": 0, "wait": 4, "dwell": 14, "length_class": "long"}, {"t": 29, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 1, "train_label": "12605 Chennai Express #1", "category": "Express", "priority": 0, "wait": 0, "dwell": 26, "length_class": "long"}, {"t": 30, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 18, "train_label": "Tambaram Local #18", "category": "Suburban EMU", "priority": 1, "wait": 12, "dwell": 3, "length_class": "medium"}, {"t": 34, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 19, "train_label": "Velachery Local #19", "category": "Suburban EMU", "priority": 1, "wait": 7, "dwell": 3, "length_class": "medium"}, {"t": 38, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 20, "train_label": "Tambaram Local #20", "category": "Suburban EMU", "priority": 1, "wait": 4, "dwell": 5, "length_class": "medium"}, {"t": 44, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 21, "train_label": "Avadi Local #21", "category": "Suburban EMU", "priority": 1, "wait": 1, "dwell": 5, "length_class": "medium"}, {"t": 47, "type": "allocate", "platform": 13, "platform_label": "14", "section": "suburban", "train": 2, "train_label": "12027 Chennai Shatabdi #2", "category": "Premium", "priority": 0, "wait": 0, "dwell": 10, "length_class": "short"}, {"t": 52, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 22, "train_label": "Chengalpattu EMU #22", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 5, "length_class": "medium"}, {"t": 59, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 23, "train_label": "Gummidipoondi EMU #23", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 4, "length_class": "medium"}, {"t": 64, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 24, "train_label": "Tiruvallur EMU #24", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 6, "length_class": "medium"}, {"t": 71, "type": "conflict", "platform": 13, "platform_label": "14", "train": 3, "train_label": "12677 Chennai Ernakulam #3"}, {"t": 71, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 3, "train_label": "12677 Chennai Ernakulam #3", "category": "Express", "priority": 0, "wait": 1, "dwell": 22, "length_class": "long"}, {"t": 85, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 27, "train_label": "Avadi Local #27", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 6, "length_class": "medium"}, {"t": 92, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 4, "train_label": "12291 Chennai Duronto #4", "category": "Express", "priority": 0, "wait": 6, "dwell": 15, "length_class": "medium"}, {"t": 94, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 25, "train_label": "Gummidipoondi EMU #25", "category": "Suburban EMU", "priority": 1, "wait": 20, "dwell": 4, "length_class": "medium"}, {"t": 99, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 26, "train_label": "Chengalpattu EMU #26", "category": "Suburban EMU", "priority": 1, "wait": 20, "dwell": 5, "length_class": "medium"}, {"t": 105, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 28, "train_label": "Velachery Local #28", "category": "Suburban EMU", "priority": 1, "wait": 12, "dwell": 5, "length_class": "medium"}, {"t": 109, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 30, "train_label": "Avadi Local #30", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 4, "length_class": "medium"}, {"t": 111, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 29, "train_label": "Tambaram Local #29", "category": "Suburban EMU", "priority": 1, "wait": 9, "dwell": 6, "length_class": "medium"}, {"t": 112, "type": "allocate", "platform": 13, "platform_label": "14", "section": "suburban", "train": 5, "train_label": "22638 Nagercoil Exp #5", "category": "Express", "priority": 0, "wait": 3, "dwell": 22, "length_class": "medium"}, {"t": 118, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 31, "train_label": "Tambaram Local #31", "category": "Suburban EMU", "priority": 1, "wait": 2, "dwell": 4, "length_class": "medium"}, {"t": 123, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 32, "train_label": "Arakkonam Local #32", "category": "Suburban EMU", "priority": 1, "wait": 1, "dwell": 6, "length_class": "medium"}, {"t": 130, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 33, "train_label": "Gummidipoondi EMU #33", "category": "Suburban EMU", "priority": 1, "wait": 3, "dwell": 4, "length_class": "medium"}, {"t": 135, "type": "conflict", "platform": 13, "platform_label": "14", "train": 6, "train_label": "22638 Nagercoil Exp #6"}, {"t": 135, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 6, "train_label": "22638 Nagercoil Exp #6", "category": "Express", "priority": 0, "wait": 1, "dwell": 16, "length_class": "long"}, {"t": 147, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 36, "train_label": "Chennai Beach EMU #36", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 3, "length_class": "medium"}, {"t": 152, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 7, "train_label": "12621 Tamil Nadu Express #7", "category": "Express", "priority": 0, "wait": 0, "dwell": 24, "length_class": "long"}, {"t": 152, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 34, "train_label": "Tambaram Local #34", "category": "Suburban EMU", "priority": 1, "wait": 16, "dwell": 3, "length_class": "medium"}, {"t": 156, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 35, "train_label": "Tambaram Local #35", "category": "Suburban EMU", "priority": 1, "wait": 14, "dwell": 6, "length_class": "medium"}, {"t": 163, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 37, "train_label": "Tambaram Local #37", "category": "Suburban EMU", "priority": 1, "wait": 10, "dwell": 6, "length_class": "medium"}, {"t": 170, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 38, "train_label": "Chennai Beach EMU #38", "category": "Suburban EMU", "priority": 1, "wait": 12, "dwell": 6, "length_class": "medium"}, {"t": 177, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 40, "train_label": "Arakkonam Local #40", "category": "Suburban EMU", "priority": 1, "wait": 5, "dwell": 6, "length_class": "medium"}, {"t": 177, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 39, "train_label": "Tambaram Local #39", "category": "Suburban EMU", "priority": 1, "wait": 12, "dwell": 4, "length_class": "medium"}, {"t": 178, "type": "allocate", "platform": 13, "platform_label": "14", "section": "suburban", "train": 8, "train_label": "12027 Chennai Shatabdi #8", "category": "Premium", "priority": 0, "wait": 7, "dwell": 12, "length_class": "short"}, {"t": 182, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 41, "train_label": "Velachery Local #41", "category": "Suburban EMU", "priority": 1, "wait": 1, "dwell": 3, "length_class": "medium"}, {"t": 186, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 9, "train_label": "12007 Chennai Shatabdi #9", "category": "Premium", "priority": 0, "wait": 0, "dwell": 11, "length_class": "short"}, {"t": 198, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 42, "train_label": "Chengalpattu EMU #42", "category": "Suburban EMU", "priority": 1, "wait": 7, "dwell": 4, "length_class": "medium"}, {"t": 203, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 43, "train_label": "Velachery Local #43", "category": "Suburban EMU", "priority": 1, "wait": 2, "dwell": 4, "length_class": "medium"}, {"t": 208, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 10, "train_label": "22625 Chennai SF Express #10", "category": "Express", "priority": 0, "wait": 3, "dwell": 17, "length_class": "long"}, {"t": 222, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 46, "train_label": "Gummidipoondi EMU #46", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 3, "length_class": "medium"}, {"t": 226, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 44, "train_label": "Chennai Beach EMU #44", "category": "Suburban EMU", "priority": 1, "wait": 19, "dwell": 4, "length_class": "medium"}, {"t": 230, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 47, "train_label": "Tiruvallur EMU #47", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 5, "length_class": "medium"}, {"t": 231, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 45, "train_label": "Tiruvallur EMU #45", "category": "Suburban EMU", "priority": 1, "wait": 17, "dwell": 3, "length_class": "medium"}, {"t": 232, "type": "allocate", "platform": 13, "platform_label": "14", "section": "suburban", "train": 11, "train_label": "12027 Chennai Shatabdi #11", "category": "Premium", "priority": 0, "wait": 5, "dwell": 11, "length_class": "short"}, {"t": 240, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 48, "train_label": "Tiruvallur EMU #48", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 4, "length_class": "medium"}, {"t": 245, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 49, "train_label": "Velachery Local #49", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 3, "length_class": "medium"}, {"t": 249, "type": "conflict", "platform": 13, "platform_label": "14", "train": 12, "train_label": "12291 Chennai Duronto #12"}, {"t": 249, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 12, "train_label": "12291 Chennai Duronto #12", "category": "Express", "priority": 0, "wait": 0, "dwell": 22, "length_class": "medium"}, {"t": 263, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 13, "train_label": "12621 Tamil Nadu Express #13", "category": "Express", "priority": 0, "wait": 0, "dwell": 20, "length_class": "long"}, {"t": 272, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 50, "train_label": "Tiruvallur EMU #50", "category": "Suburban EMU", "priority": 1, "wait": 22, "dwell": 4, "length_class": "medium"}, {"t": 277, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 51, "train_label": "Arakkonam Local #51", "category": "Suburban EMU", "priority": 1, "wait": 19, "dwell": 5, "length_class": "medium"}, {"t": 283, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 52, "train_label": "Gummidipoondi EMU #52", "category": "Suburban EMU", "priority": 1, "wait": 16, "dwell": 5, "length_class": "medium"}, {"t": 288, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 14, "train_label": "12603 Chennai Karnataka Exp #14", "category": "Express", "priority": 0, "wait": 0, "dwell": 24, "length_class": "long"}, {"t": 289, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 53, "train_label": "Tambaram Local #53", "category": "Suburban EMU", "priority": 1, "wait": 14, "dwell": 3, "length_class": "medium"}, {"t": 293, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 54, "train_label": "Arakkonam Local #54", "category": "Suburban EMU", "priority": 1, "wait": 8, "dwell": 4, "length_class": "medium"}, {"t": 298, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 55, "train_label": "Velachery Local #55", "category": "Suburban EMU", "priority": 1, "wait": 3, "dwell": 6, "length_class": "medium"}, {"t": 305, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 15, "train_label": "22625 Chennai SF Express #15", "category": "Express", "priority": 0, "wait": 3, "dwell": 19, "length_class": "long"}, {"t": 320, "type": "allocate", "platform": 3, "platform_label": "4", "section": "main", "train": 58, "train_label": "Tiruvallur EMU #58", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 4, "length_class": "medium"}, {"t": 325, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 56, "train_label": "Chengalpattu EMU #56", "category": "Suburban EMU", "priority": 1, "wait": 20, "dwell": 3, "length_class": "medium"}, {"t": 329, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 57, "train_label": "Chengalpattu EMU #57", "category": "Suburban EMU", "priority": 1, "wait": 14, "dwell": 3, "length_class": "medium"}, {"t": 333, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 59, "train_label": "Chennai Beach EMU #59", "category": "Suburban EMU", "priority": 1, "wait": 5, "dwell": 3, "length_class": "medium"}, {"t": 337, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 60, "train_label": "Velachery Local #60", "category": "Suburban EMU", "priority": 1, "wait": 2, "dwell": 3, "length_class": "medium"}, {"t": 343, "type": "allocate", "platform": 11, "platform_label": "12", "section": "main", "train": 61, "train_label": "Avadi Local #61", "category": "Suburban EMU", "priority": 1, "wait": 0, "dwell": 3, "length_class": "medium"}]};
+const scenario = DATA.scenario;
+const allEvents = DATA.events;
+const allocations = allEvents.filter(e => e.type === 'allocate');
+const conflictEvents = allEvents.filter(e => e.type === 'conflict');
+const horizon = scenario.horizon;
+const platforms = scenario.platforms;
+const mainPlatforms = platforms.filter(p => p.section === 'main');
+const suburbanPlatforms = platforms.filter(p => p.section === 'suburban');
+
+function catClass(cat) {
+  if (cat === 'Premium') return { text: 'cat-premium', fill: 'fill-premium' };
+  if (cat === 'Suburban EMU') return { text: 'cat-suburban', fill: 'fill-suburban' };
+  return { text: 'cat-express', fill: 'fill-express' };
+}
+
+function renderBays(container, plist) {
+  container.innerHTML = plist.map(p => `
+    <div class="bay" id="bay-${p.id}">
+      <div>
+        <div class="pf-label">PF ${p.label}</div>
+        <div class="pf-meta">${p.length_class}${p.electrified ? ' \u26a1' : ''}</div>
+      </div>
+      <div class="occupant" id="occ-${p.id}"><span class="vacant">&mdash; vacant &mdash;</span></div>
+      <div class="signal free" id="sig-${p.id}"></div>
+    </div>
+  `).join('');
+}
+renderBays(document.getElementById('mainBays'), mainPlatforms);
+renderBays(document.getElementById('suburbanBays'), suburbanPlatforms);
+
+const scrub = document.getElementById('scrub');
+scrub.max = horizon;
+const scrubLabel = document.getElementById('scrubLabel');
+const playBtn = document.getElementById('playBtn');
+const speedSel = document.getElementById('speed');
+const ticker = document.getElementById('ticker');
+const tTime = document.getElementById('tTime');
+const tWaiting = document.getElementById('tWaiting');
+const tServed = document.getElementById('tServed');
+const tConflicts = document.getElementById('tConflicts');
+const tAvgWait = document.getElementById('tAvgWait');
+const mainCount = document.getElementById('mainCount');
+const suburbanCount = document.getElementById('suburbanCount');
+
+let lastTickerEventIdx = -1;
+
+function updateReadouts(tt) {
+  scrub.value = tt;
+  scrubLabel.textContent = `t = ${tt}`;
+  tTime.textContent = String(tt).padStart(3, '0');
+
+  let waiting = 0, served = 0, totalWait = 0, conflictsSoFar = 0;
+  const occByPlatform = {};
+  allocations.forEach(ev => {
+    const arrival = ev.t - ev.wait;
+    if (ev.t <= tt) { served++; totalWait += ev.wait; }
+    if (arrival <= tt && ev.t > tt) waiting++;
+    if (ev.t <= tt && ev.t + ev.dwell > tt) occByPlatform[ev.platform] = ev;
+  });
+  conflictEvents.forEach(ev => { if (ev.t <= tt) conflictsSoFar++; });
+
+  tWaiting.textContent = String(waiting).padStart(2, '0');
+  tServed.textContent = String(served).padStart(2, '0');
+  tAvgWait.textContent = served ? (totalWait / served).toFixed(1) : '0.0';
+  tConflicts.textContent = String(conflictsSoFar).padStart(3, '0');
+
+  let mainOccupied = 0, suburbanOccupied = 0;
+  platforms.forEach(p => {
+    const bay = document.getElementById(`bay-${p.id}`);
+    const occ = document.getElementById(`occ-${p.id}`);
+    const sig = document.getElementById(`sig-${p.id}`);
+    const ev = occByPlatform[p.id];
+    if (ev) {
+      const cls = catClass(ev.category);
+      const remaining = Math.max(0, (ev.t + ev.dwell) - tt);
+      const pct = Math.round(100 * remaining / ev.dwell);
+      occ.innerHTML = `<div class="train-name ${cls.text}">${ev.train_label}</div>
+        <div class="dwell-bar"><div class="dwell-fill ${cls.fill}" style="width:${pct}%"></div></div>`;
+      sig.className = 'signal busy';
+      if (p.section === 'main') mainOccupied++; else suburbanOccupied++;
+    } else {
+      occ.innerHTML = `<span class="vacant">&mdash; vacant &mdash;</span>`;
+      sig.className = 'signal free';
+    }
+    const conflictNow = conflictEvents.some(c => c.platform === p.id && c.t === tt);
+    bay.classList.toggle('conflict-flash', conflictNow);
+  });
+  mainCount.textContent = `${mainOccupied}/${mainPlatforms.length} occupied`;
+  suburbanCount.textContent = `${suburbanOccupied}/${suburbanPlatforms.length} occupied`;
+
+  // ticker: most recent allocation at or before tt
+  let latest = null;
+  for (let i = allocations.length - 1; i >= 0; i--) {
+    if (allocations[i].t <= tt) { latest = allocations[i]; break; }
+  }
+  if (latest) {
+    const cls = catClass(latest.category);
+    ticker.innerHTML = `<span class="${cls.text}">PF ${latest.platform_label} \u2192 ${latest.train_label}</span> <span class="dim">&middot; ${latest.category} &middot; waited ${latest.wait} steps &middot; dwell ${latest.dwell} steps</span>`;
+  }
+}
+updateReadouts(0);
+
+let playing = false, t = 0, acc = 0, lastFrame = null;
+function frame(now) {
+  if (!playing) return;
+  if (lastFrame === null) lastFrame = now;
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  const stepsPerSec = parseFloat(speedSel.value);
+  acc += dt * stepsPerSec;
+  while (acc >= 1 && t < horizon) { t += 1; acc -= 1; }
+  updateReadouts(t);
+  if (t >= horizon) { playing = false; playBtn.textContent = 'Replay'; return; }
+  requestAnimationFrame(frame);
+}
+playBtn.addEventListener('click', () => {
+  if (t >= horizon) t = 0;
+  playing = !playing;
+  playBtn.textContent = playing ? 'Pause' : 'Play';
+  if (playing) { lastFrame = null; requestAnimationFrame(frame); }
+});
+scrub.addEventListener('input', () => {
+  playing = false; playBtn.textContent = 'Play';
+  t = parseInt(scrub.value, 10);
+  updateReadouts(t);
+});
+</script>
+</body>
+</html>

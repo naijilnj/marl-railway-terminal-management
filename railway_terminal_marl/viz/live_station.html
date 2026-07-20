@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MGR Chennai Central — Live Terminus Control</title>
+<style>
+  :root {
+    --bg: #0a0e13; --panel: #10161d; --panel-alt: #0d131a; --panel-border: #1e2932; --tile: #05070a;
+    --amber: #ffb000; --gold: #ffd54f; --cyan: #4fd1e8; --green: #3ecf6e; --red: #e5484d;
+    --text: #d7dee5; --text-dim: #6b7d8f;
+    --mono: 'Space Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 18px 40px; }
+  .topbar { display:flex; justify-content: space-between; align-items:flex-start; margin-bottom: 4px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; color: var(--text-dim); text-transform: uppercase; }
+  h1 { font-family: var(--mono); font-size: 21px; font-weight: 700; margin: 4px 0; color: var(--amber); letter-spacing: 0.02em; }
+  .subtitle { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-bottom: 18px; }
+  .live-badge { display:flex; align-items:center; gap:7px; font-family: var(--mono); font-size: 11px; letter-spacing:0.1em; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--panel-border); background: var(--tile); height: fit-content; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.4s infinite; }
+  .live-dot.down { background: var(--red); box-shadow: 0 0 6px var(--red); animation:none; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  .board { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--tile); border: 1px solid var(--panel-border); border-radius: 4px; padding: 9px 11px; position: relative; overflow: hidden; }
+  .tile::after { content: ""; position: absolute; left:0; right:0; top:50%; height:1px; background: rgba(0,0,0,0.6); }
+  .tile .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 3px; }
+  .tile .value { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; line-height: 1; }
+  .tile.served .value { color: var(--green); } .tile.conflict .value { color: var(--red); }
+  .tile .sub { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+
+  .ticker { font-family: var(--mono); font-size: 12px; background: var(--tile); border: 1px solid var(--panel-border); border-radius: 4px; padding: 9px 14px; color: var(--gold); margin-bottom: 16px; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ticker .dim { color: var(--text-dim); }
+
+  .station { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .station { grid-template-columns: 1fr; } }
+  .terminal-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px 14px 10px; }
+  .terminal-panel h2 { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; margin: 0 0 10px 0; font-weight: 700; display:flex; justify-content: space-between; }
+  .terminal-panel h2 span.count { color: var(--amber); }
+
+  .bay { display: grid; grid-template-columns: 46px 1fr 14px; align-items: center; gap: 10px; background: var(--panel-alt); border: 1px solid var(--panel-border); border-radius: 5px; padding: 7px 9px; margin-bottom: 6px; transition: border-color 0.15s, box-shadow 0.15s; }
+  .bay.conflict-flash { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+  .bay .pf-label { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); text-align: center; }
+  .bay .pf-meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); text-align: center; margin-top: 1px; }
+  .bay .occupant .train-name { font-family: var(--mono); font-size: 11px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bay .occupant .vacant { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .bay .occupant .dwell-bar { height: 3px; background: var(--panel-border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .bay .occupant .dwell-fill { height: 100%; border-radius: 2px; }
+  .bay .signal { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto; }
+  .signal.free { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .signal.busy { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .cat-premium { color: var(--gold); } .fill-premium { background: var(--gold); }
+  .cat-express { color: var(--amber); } .fill-express { background: var(--amber); }
+  .cat-suburban { color: var(--green); } .fill-suburban { background: var(--green); }
+
+  .legend { display: flex; gap: 16px; margin: 14px 0 0; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+  .footnote { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 14px; line-height: 1.7; }
+  .nav { font-family: var(--mono); font-size: 11px; margin-bottom: 14px; }
+  .nav a { color: var(--cyan); text-decoration: none; margin-right: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="/">&larr; server home</a><a href="/signals">signaling schematic &rarr;</a></div>
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">MAS &middot; Southern Railway &middot; MARL Platform Allocation</div>
+      <h1>MGR CHENNAI CENTRAL — LIVE TERMINUS CONTROL</h1>
+      <div class="subtitle">Live inference against the running PPO policy &middot; episodes loop continuously, not a fixed replay</div>
+    </div>
+    <div class="live-badge"><div class="live-dot" id="liveDot"></div><span id="liveLabel">CONNECTING</span></div>
+  </div>
+
+  <div class="board">
+    <div class="tile"><div class="label">Episode</div><div class="value" id="tEpisode">0</div></div>
+    <div class="tile"><div class="label">Time</div><div class="value" id="tTime">000</div><div class="sub" id="tHorizon">/ 000</div></div>
+    <div class="tile"><div class="label">Waiting</div><div class="value" id="tWaiting">00</div></div>
+    <div class="tile served"><div class="label">Served</div><div class="value" id="tServed">00</div><div class="sub" id="tServedAll">all-time: 0</div></div>
+    <div class="tile conflict"><div class="label">Conflicts</div><div class="value" id="tConflicts">00</div><div class="sub" id="tConflictsAll">all-time: 0</div></div>
+    <div class="tile"><div class="label">Avg Wait</div><div class="value" id="tAvgWait">0.0</div><div class="sub" id="tAvgWaitAll">all-time: 0.0</div></div>
+  </div>
+
+  <div class="ticker" id="ticker"><span class="dim">CONNECTING TO LIVE FEED&hellip;</span></div>
+
+  <div class="station">
+    <div class="terminal-panel">
+      <h2>MAIN TERMINAL <span class="count" id="mainCount">0/12 occupied</span></h2>
+      <div id="mainBays"></div>
+    </div>
+    <div class="terminal-panel">
+      <h2>SUBURBAN TERMINAL — MOORE MARKET COMPLEX <span class="count" id="suburbanCount">0/5 occupied</span></h2>
+      <div id="suburbanBays"></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="swatch" style="background:var(--gold)"></span> Premium (Rajdhani / Shatabdi)</div>
+    <div class="item"><span class="swatch" style="background:var(--amber)"></span> Express / Mail</div>
+    <div class="item"><span class="swatch" style="background:var(--green)"></span> Suburban EMU</div>
+    <div class="item"><span class="swatch" style="background:var(--red)"></span> Allocation conflict this instant</div>
+  </div>
+  <div class="footnote">
+    This view is driven live by server/app.py, which runs the trained PPO policy against the real
+    RailwayTerminusEnv in a background thread and streams state over a WebSocket. When one episode
+    (one day of MGR Chennai Central traffic) ends, the server immediately starts the next with a
+    fresh random schedule — the control room never stops.
+  </div>
+</div>
+
+<script>
+let mainRendered = false, suburbanRendered = false;
+let lastEventKey = null;
+
+function catClass(cat) {
+  if (cat === 'Premium') return { text: 'cat-premium', fill: 'fill-premium' };
+  if (cat === 'Suburban EMU') return { text: 'cat-suburban', fill: 'fill-suburban' };
+  return { text: 'cat-express', fill: 'fill-express' };
+}
+
+function ensureBays(container, plist) {
+  container.innerHTML = plist.map(p => `
+    <div class="bay" id="bay-${p.id}">
+      <div><div class="pf-label">PF ${p.label}</div><div class="pf-meta">${p.length_class}${p.electrified ? ' \u26a1' : ''}</div></div>
+      <div class="occupant" id="occ-${p.id}"><span class="vacant">&mdash; vacant &mdash;</span></div>
+      <div class="signal free" id="sig-${p.id}"></div>
+    </div>
+  `).join('');
+}
+
+function render(state) {
+  if (!mainRendered) {
+    ensureBays(document.getElementById('mainBays'), state.platforms.filter(p => p.section === 'main'));
+    mainRendered = true;
+  }
+  if (!suburbanRendered) {
+    ensureBays(document.getElementById('suburbanBays'), state.platforms.filter(p => p.section === 'suburban'));
+    suburbanRendered = true;
+  }
+
+  document.getElementById('tEpisode').textContent = state.episode;
+  document.getElementById('tTime').textContent = String(state.t_in_episode).padStart(3, '0');
+  document.getElementById('tHorizon').textContent = `/ ${state.horizon}`;
+  document.getElementById('tWaiting').textContent = String(state.kpis.waiting_now).padStart(2, '0');
+  document.getElementById('tServed').textContent = String(state.kpis.episode_served).padStart(2, '0');
+  document.getElementById('tServedAll').textContent = `all-time: ${state.kpis.all_time_served}`;
+  document.getElementById('tConflicts').textContent = String(state.kpis.episode_conflicts).padStart(3, '0');
+  document.getElementById('tConflictsAll').textContent = `all-time: ${state.kpis.all_time_conflicts}`;
+  document.getElementById('tAvgWait').textContent = state.kpis.episode_avg_wait.toFixed(1);
+  document.getElementById('tAvgWaitAll').textContent = `all-time: ${state.kpis.all_time_avg_wait.toFixed(1)}`;
+
+  let mainOcc = 0, suburbanOcc = 0;
+  const conflictNow = new Set(state.events.filter(e => e.type === 'conflict' && e.tick === state.tick).map(e => e.platform));
+  state.platforms.forEach(p => {
+    const occEl = document.getElementById(`occ-${p.id}`);
+    const sigEl = document.getElementById(`sig-${p.id}`);
+    const bayEl = document.getElementById(`bay-${p.id}`);
+    if (p.occupant) {
+      const cls = catClass(p.occupant.category);
+      const pct = Math.round(100 * p.occupant.remaining / p.occupant.dwell);
+      occEl.innerHTML = `<div class="train-name ${cls.text}">${p.occupant.train_label}</div>
+        <div class="dwell-bar"><div class="dwell-fill ${cls.fill}" style="width:${pct}%"></div></div>`;
+      sigEl.className = 'signal busy';
+      if (p.section === 'main') mainOcc++; else suburbanOcc++;
+    } else {
+      occEl.innerHTML = `<span class="vacant">&mdash; vacant &mdash;</span>`;
+      sigEl.className = 'signal free';
+    }
+    bayEl.classList.toggle('conflict-flash', conflictNow.has(p.id));
+  });
+  document.getElementById('mainCount').textContent = `${mainOcc}/12 occupied`;
+  document.getElementById('suburbanCount').textContent = `${suburbanOcc}/5 occupied`;
+
+  const allocs = state.events.filter(e => e.type === 'allocate');
+  if (allocs.length) {
+    const latest = allocs[allocs.length - 1];
+    const key = `${latest.t}-${latest.platform}-${latest.train}`;
+    if (key !== lastEventKey) {
+      lastEventKey = key;
+      const cls = catClass(latest.category);
+      document.getElementById('ticker').innerHTML = `<span class="${cls.text}">PF ${latest.platform_label} \u2192 ${latest.train_label}</span> <span class="dim">&middot; ${latest.category} &middot; waited ${latest.wait} steps &middot; dwell ${latest.dwell} steps</span>`;
+    }
+  }
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${proto}//${location.host}/ws`);
+  const dot = document.getElementById('liveDot');
+  const label = document.getElementById('liveLabel');
+  ws.onopen = () => { dot.classList.remove('down'); label.textContent = 'LIVE'; };
+  ws.onclose = () => { dot.classList.add('down'); label.textContent = 'RECONNECTING'; setTimeout(connect, 1500); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (msg) => render(JSON.parse(msg.data));
+}
+connect();
+</script>
+</body>
+</html>

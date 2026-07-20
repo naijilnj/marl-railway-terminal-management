@@ -1,0 +1,5 @@
+pettingzoo
+stable-baselines3
+gymnasium
+fastapi
+uvicorn[standard]

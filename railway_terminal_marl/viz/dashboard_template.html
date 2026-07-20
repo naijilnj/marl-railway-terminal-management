@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Training Telemetry — Terminus MARL</title>
+<style>
+  :root {
+    --bg: #0a0e13;
+    --panel: #10161d;
+    --panel-border: #1e2932;
+    --tile: #05070a;
+    --amber: #ffb000;
+    --cyan: #4fd1e8;
+    --green: #3ecf6e;
+    --red: #e5484d;
+    --text: #d7dee5;
+    --text-dim: #6b7d8f;
+    --mono: 'Space Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 28px 20px 40px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+  h1 { font-family: var(--mono); font-size: 22px; font-weight: 700; margin: 0 0 20px 0; color: var(--amber); letter-spacing: 0.02em; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+  .tile { background: var(--tile); border: 1px solid var(--panel-border); border-radius: 4px; padding: 12px 14px; }
+  .tile .label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.15em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px; }
+  .tile .value { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--amber); }
+  .tile .sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .tile.good .value { color: var(--green); }
+
+  .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 18px; margin-bottom: 18px; }
+  .panel h2 { font-family: var(--mono); font-size: 13px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; margin: 0 0 12px 0; font-weight: 700; }
+  svg { display: block; width: 100%; height: auto; }
+  .axis-line { stroke: var(--panel-border); stroke-width: 1; }
+  .axis-label { font-family: var(--mono); font-size: 10px; fill: var(--text-dim); }
+  .curve-wait { fill: none; stroke: var(--amber); stroke-width: 2; }
+  .curve-invalid { fill: none; stroke: var(--red); stroke-width: 2; }
+  .curve-conflicts { fill: none; stroke: var(--cyan); stroke-width: 2; }
+  .dot { fill: var(--bg); stroke-width: 1.5; }
+  .legend { display: flex; gap: 18px; margin-bottom: 8px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .swatch { width: 14px; height: 2px; display: inline-block; }
+  .footnote { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 10px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Railway Terminus &middot; MARL Platform Allocation</div>
+  <h1>TRAINING TELEMETRY</h1>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="panel">
+    <div class="legend"><div class="item"><span class="swatch" style="background:var(--amber)"></span> Avg wait per train (timesteps)</div></div>
+    <svg id="chartWait" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="panel">
+    <div class="legend">
+      <div class="item"><span class="swatch" style="background:var(--red)"></span> Invalid actions / episode</div>
+      <div class="item"><span class="swatch" style="background:var(--cyan)"></span> Platform conflicts / episode</div>
+    </div>
+    <svg id="chartQuality" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
+    <div class="footnote">One point per completed training episode (parallel envs deduped by step). Data is from an actual PPO training run with parameter sharing across platform agents via SuperSuit.</div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+
+const W = 1000, H = 260, mL = 44, mR = 16, mT = 14, mB = 26;
+const plotW = W - mL - mR, plotH = H - mT - mB;
+
+function buildAxes(svg, yMax, yTicks, xTicks) {
+  let s = '';
+  for (let i = 0; i <= yTicks; i++) {
+    const y = mT + plotH - (i / yTicks) * plotH;
+    s += `<line class="axis-line" x1="${mL}" y1="${y}" x2="${W-mR}" y2="${y}"></line>`;
+    s += `<text class="axis-label" x="${mL-6}" y="${y+3}" text-anchor="end">${(yMax * i / yTicks).toFixed(1)}</text>`;
+  }
+  return s;
+}
+
+function linePath(values, yMax) {
+  const n = values.length;
+  return values.map((v, i) => {
+    const x = mL + (n === 1 ? 0 : (i / (n - 1)) * plotW);
+    const y = mT + plotH - (v / yMax) * plotH;
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+}
+
+function dots(values, yMax, colorVar) {
+  const n = values.length;
+  return values.map((v, i) => {
+    const x = mL + (n === 1 ? 0 : (i / (n - 1)) * plotW);
+    const y = mT + plotH - (v / yMax) * plotH;
+    return `<circle class="dot" style="stroke:var(${colorVar})" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"></circle>`;
+  }).join('');
+}
+
+const waits = DATA.map(r => r.avg_wait);
+const invalids = DATA.map(r => r.invalid_actions);
+const conflicts = DATA.map(r => r.conflicts);
+
+const waitMax = Math.max(1, ...waits) * 1.15;
+const chartWait = document.getElementById('chartWait');
+chartWait.innerHTML = buildAxes(chartWait, waitMax, 4)
+  + `<path class="curve-wait" d="${linePath(waits, waitMax)}"></path>`
+  + dots(waits, waitMax, '--amber');
+
+const qMax = Math.max(1, ...invalids, ...conflicts) * 1.15;
+const chartQuality = document.getElementById('chartQuality');
+chartQuality.innerHTML = buildAxes(chartQuality, qMax, 4)
+  + `<path class="curve-invalid" d="${linePath(invalids, qMax)}"></path>`
+  + dots(invalids, qMax, '--red')
+  + `<path class="curve-conflicts" d="${linePath(conflicts, qMax)}"></path>`
+  + dots(conflicts, qMax, '--cyan');
+
+const first = DATA[0], last = DATA[DATA.length - 1];
+const kpis = [
+  { label: 'Episodes logged', value: DATA.length, sub: `steps 0 \u2192 ${last.global_step}` },
+  { label: 'Avg wait: start \u2192 end', value: `${first.avg_wait.toFixed(1)} \u2192 ${last.avg_wait.toFixed(1)}`, good: true },
+  { label: 'Invalid actions (latest)', value: last.invalid_actions, sub: `from ${first.invalid_actions} at ep 1`, good: last.invalid_actions === 0 },
+  { label: 'Conflicts (latest)', value: last.conflicts, sub: `from ${first.conflicts} at ep 1` },
+];
+document.getElementById('kpis').innerHTML = kpis.map(k =>
+  `<div class="tile ${k.good ? 'good' : ''}"><div class="label">${k.label}</div><div class="value">${k.value}</div>${k.sub ? `<div class="sub">${k.sub}</div>` : ''}</div>`
+).join('');
+</script>
+</body>
+</html>

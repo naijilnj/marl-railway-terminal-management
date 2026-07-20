@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MGR Chennai Central — Live Dashboard</title>
+<style>
+  :root {
+    --bg: #071018;
+    --panel: #0f1620;
+    --panel-2: #0b1118;
+    --panel-border: #1d2a36;
+    --tile: #05080c;
+    --amber: #ffb000;
+    --gold: #ffd54f;
+    --cyan: #4fd1e8;
+    --green: #3ecf6e;
+    --red: #e5484d;
+    --text: #d7dee5;
+    --text-dim: #6b7d8f;
+    --mono: 'SFMono-Regular', ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: radial-gradient(circle at top, #13202a 0%, var(--bg) 55%); color: var(--text); font-family: var(--sans); }
+  body:before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 38px 38px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 96%);
+  }
+  .wrap { max-width: 1340px; margin: 0 auto; padding: 24px 18px 42px; position: relative; }
+  .nav { font-family: var(--mono); font-size: 11px; margin-bottom: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .nav a { color: var(--cyan); text-decoration: none; }
+  .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; color: var(--text-dim); text-transform: uppercase; }
+  h1 { font-family: var(--mono); font-size: 25px; margin: 6px 0 8px; color: var(--amber); letter-spacing: 0.03em; }
+  .subtitle { font-family: var(--mono); font-size: 11px; color: var(--text-dim); max-width: 820px; line-height: 1.6; }
+  .live-badge { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--panel-border); background: var(--tile); height: fit-content; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.4s infinite; }
+  .live-dot.down { background: var(--red); box-shadow: 0 0 6px var(--red); animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .hero { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 1100px) { .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 680px) { .hero { grid-template-columns: 1fr; } }
+  .tile { background: linear-gradient(180deg, rgba(16,22,29,0.96), rgba(7,10,14,0.96)); border: 1px solid var(--panel-border); border-radius: 14px; padding: 14px 15px 12px; }
+  .tile .label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px; }
+  .tile .value { font-family: var(--mono); font-size: 26px; font-weight: 700; color: var(--amber); line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile .sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 5px; }
+  .tile.good .value { color: var(--green); }
+  .tile.warn .value { color: var(--red); }
+  .tile.info .value { color: var(--cyan); }
+
+  .progress-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px; padding: 14px 15px 16px; margin-bottom: 12px; }
+  .progress-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .progress-top .title { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; color: var(--text-dim); text-transform: uppercase; }
+  .progress-top .state { font-family: var(--mono); font-size: 11px; color: var(--green); letter-spacing: 0.1em; text-transform: uppercase; }
+  .bar { height: 12px; border-radius: 999px; background: #081017; border: 1px solid var(--panel-border); overflow: hidden; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, var(--amber), var(--gold)); border-radius: 999px; transition: width 0.2s ease; }
+  .bar-labels { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+  .grid { display: grid; grid-template-columns: 1.25fr 0.95fr; gap: 12px; align-items: start; }
+  @media (max-width: 1080px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px; padding: 14px; }
+  .panel h2 { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; color: var(--text-dim); text-transform: uppercase; margin: 0 0 12px; font-weight: 700; }
+  .panel-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .chip { font-family: var(--mono); font-size: 11px; color: var(--amber); border: 1px solid var(--panel-border); border-radius: 999px; padding: 6px 10px; background: var(--tile); }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  .section { border: 1px solid var(--panel-border); border-radius: 14px; background: var(--panel-2); padding: 12px; }
+  .section-title { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 10px; }
+  .platform-card { display: grid; grid-template-columns: 48px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 12px; background: #06090d; border: 1px solid var(--panel-border); margin-bottom: 8px; }
+  .platform-card:last-child { margin-bottom: 0; }
+  .pf { text-align: center; }
+  .pf .num { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--amber); }
+  .pf .meta { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 2px; }
+  .status { min-width: 0; }
+  .status .name { font-family: var(--mono); font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status .sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+  .status .barline { height: 3px; border-radius: 999px; background: #1b2630; overflow: hidden; margin-top: 6px; }
+  .status .fill { height: 100%; border-radius: 999px; }
+  .signal { width: 10px; height: 10px; border-radius: 50%; }
+  .signal.free { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .signal.busy { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .cat-premium { color: var(--gold); } .fill-premium { background: var(--gold); }
+  .cat-express { color: var(--amber); } .fill-express { background: var(--amber); }
+  .cat-suburban { color: var(--green); } .fill-suburban { background: var(--green); }
+
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .list-item { border: 1px solid var(--panel-border); border-radius: 12px; background: #06090d; padding: 10px 11px; }
+  .list-item .primary { font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1.4; }
+  .list-item .secondary { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
+  .empty { font-family: var(--mono); font-size: 11px; color: var(--text-dim); padding: 12px 0; }
+
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 1080px) { .columns { grid-template-columns: 1fr; } }
+  .event-band { display: flex; flex-direction: column; gap: 8px; }
+  .event-item { border: 1px solid var(--panel-border); border-radius: 12px; background: #06090d; padding: 10px 11px; }
+  .event-item .kind { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.12em; }
+  .event-item .line { font-family: var(--mono); font-size: 11px; margin-top: 5px; }
+  .event-item .line.good { color: var(--green); }
+  .event-item .line.warn { color: var(--red); }
+  .footnote { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 14px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="/">home</a><a href="/station">station board</a><a href="/signals">signal board</a><a href="/api/state">raw state</a></div>
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">MAS · Southern Railway · MARL operations</div>
+      <h1>MGR CHENNAI CENTRAL — LIVE DASHBOARD</h1>
+      <div class="subtitle">This view tracks the running PPO policy, live platform allocation, queue depth, utilization, and upcoming arrivals from the same env powering the station and signal boards.</div>
+    </div>
+    <div class="live-badge"><div class="live-dot" id="liveDot"></div><span id="liveLabel">CONNECTING</span></div>
+  </div>
+
+  <div class="hero">
+    <div class="tile info"><div class="label">Episode</div><div class="value" id="episode">0</div><div class="sub" id="episodeSeed">seed 0</div></div>
+    <div class="tile"><div class="label">Tick</div><div class="value" id="tick">000</div><div class="sub" id="tickMeta">/ 000</div></div>
+    <div class="tile good"><div class="label">Waiting</div><div class="value" id="waiting">00</div><div class="sub" id="waitingMeta">queue depth</div></div>
+    <div class="tile warn"><div class="label">Conflicts</div><div class="value" id="conflicts">000</div><div class="sub" id="invalidMeta">invalid 0</div></div>
+  </div>
+
+  <div class="hero">
+    <div class="tile"><div class="label">Served</div><div class="value" id="served">00</div><div class="sub" id="servedMeta">all-time 0</div></div>
+    <div class="tile good"><div class="label">Avg wait</div><div class="value" id="avgWait">0.0</div><div class="sub" id="avgWaitMeta">all-time 0.0</div></div>
+    <div class="tile info"><div class="label">Utilization</div><div class="value" id="utilization">0%</div><div class="sub" id="utilMeta">main 0% · suburban 0%</div></div>
+    <div class="tile"><div class="label">Model</div><div class="value" id="speed">3.0</div><div class="sub" id="runMeta">live steps / sec</div></div>
+  </div>
+
+  <div class="progress-card">
+    <div class="progress-top">
+      <div class="title">Episode progress</div>
+      <div class="state" id="runState">running</div>
+    </div>
+    <div class="bar"><div id="progressFill" style="width:0%"></div></div>
+    <div class="bar-labels"><span id="progressLeft">0%</span><span id="progressRight">0 / 0</span></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Platform occupancy</h2>
+        <div class="chip" id="platformChip">17 platforms</div>
+      </div>
+      <div class="split">
+        <div class="section">
+          <div class="section-title">Main terminal</div>
+          <div id="mainPlatforms" class="list"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">Suburban terminal</div>
+          <div id="suburbanPlatforms" class="list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Queue and arrivals</h2>
+        <div class="chip" id="queueChip">0 queued</div>
+      </div>
+      <div class="columns">
+        <div class="section">
+          <div class="section-title">Waiting queue</div>
+          <div id="queueList" class="list"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">Next arrivals</div>
+          <div id="arrivalList" class="list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Recent allocations</h2>
+        <div class="chip" id="allocationChip">0 events</div>
+      </div>
+      <div id="allocationList" class="event-band"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Current alerts</h2>
+        <div class="chip" id="alertChip">0 alerts</div>
+      </div>
+      <div id="alertList" class="event-band"></div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    The dashboard is live, not a replay. It reads the same websocket as the station and signal boards,
+    which lets you keep a separate operations panel while the model continues allocating platforms.
+  </div>
+</div>
+
+<script>
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function catClass(cat) {
+  if (cat === 'Premium') return { text: 'cat-premium', fill: 'fill-premium' };
+  if (cat === 'Suburban EMU') return { text: 'cat-suburban', fill: 'fill-suburban' };
+  return { text: 'cat-express', fill: 'fill-express' };
+}
+
+function renderPlatformList(node, platforms) {
+  if (!platforms.length) {
+    node.innerHTML = '<div class="empty">No platforms available.</div>';
+    return;
+  }
+  node.innerHTML = platforms.map(p => {
+    const occupant = p.occupant;
+    if (!occupant) {
+      return `
+        <div class="platform-card">
+          <div class="pf"><div class="num">${escapeHtml(p.label)}</div><div class="meta">${escapeHtml(p.length_class)}</div></div>
+          <div class="status"><div class="name">Vacant</div><div class="sub">ready at t=${escapeHtml(p.ready_at)}</div></div>
+          <div class="signal free"></div>
+        </div>
+      `;
+    }
+    const cls = catClass(occupant.category);
+    const pct = Math.max(0, Math.min(100, Math.round(100 * occupant.remaining / occupant.dwell)));
+    return `
+      <div class="platform-card">
+        <div class="pf"><div class="num">${escapeHtml(p.label)}</div><div class="meta">${escapeHtml(p.length_class)}</div></div>
+        <div class="status">
+          <div class="name ${cls.text}">${escapeHtml(occupant.train_label)}</div>
+          <div class="sub">${escapeHtml(occupant.category)} · wait ${escapeHtml(occupant.wait)} · dwell ${escapeHtml(occupant.dwell)} · remaining ${escapeHtml(occupant.remaining)}</div>
+          <div class="barline"><div class="fill ${cls.fill}" style="width:${pct}%"></div></div>
+        </div>
+        <div class="signal busy"></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderList(node, items, emptyText, renderItem) {
+  if (!items.length) {
+    node.innerHTML = `<div class="empty">${emptyText}</div>`;
+    return;
+  }
+  node.innerHTML = items.map(renderItem).join('');
+}
+
+function render(state) {
+  const system = state.system || {};
+  const kpis = state.kpis || {};
+  const util = state.utilization || {};
+
+  document.getElementById('episode').textContent = state.episode ?? 0;
+  document.getElementById('episodeSeed').textContent = `seed ${system.seed ?? 0}`;
+  document.getElementById('tick').textContent = String(state.t_in_episode ?? 0).padStart(3, '0');
+  document.getElementById('tickMeta').textContent = `/ ${state.horizon ?? 0}`;
+  document.getElementById('waiting').textContent = String(kpis.waiting_now ?? 0).padStart(2, '0');
+  document.getElementById('waitingMeta').textContent = `${(state.queue || []).length} trains currently waiting`;
+  document.getElementById('conflicts').textContent = String(kpis.episode_conflicts ?? 0).padStart(3, '0');
+  document.getElementById('invalidMeta').textContent = `invalid ${kpis.episode_invalid ?? 0}`;
+  document.getElementById('served').textContent = String(kpis.episode_served ?? 0).padStart(2, '0');
+  document.getElementById('servedMeta').textContent = `all-time ${kpis.all_time_served ?? 0}`;
+  document.getElementById('avgWait').textContent = Number(kpis.episode_avg_wait ?? 0).toFixed(1);
+  document.getElementById('avgWaitMeta').textContent = `all-time ${Number(kpis.all_time_avg_wait ?? 0).toFixed(1)}`;
+  document.getElementById('utilization').textContent = `${Math.round((util.overall || 0) * 100)}%`;
+  document.getElementById('utilMeta').textContent = `main ${Math.round((util.main || 0) * 100)}% · suburban ${Math.round((util.suburban || 0) * 100)}%`;
+  document.getElementById('speed').textContent = Number(system.steps_per_sec ?? 0).toFixed(1);
+  document.getElementById('runMeta').textContent = `live steps / sec · episode ${system.episode_index ?? 0}`;
+  document.getElementById('runState').textContent = system.running ? 'running' : 'stopped';
+  document.getElementById('platformChip').textContent = `${(state.platforms || []).length} platforms`;
+  document.getElementById('queueChip').textContent = `${(state.queue || []).length} queued`;
+  document.getElementById('allocationChip').textContent = `${(state.recent_allocations || []).length} events`;
+  document.getElementById('alertChip').textContent = `${(state.recent_conflicts || []).length} alerts`;
+  document.getElementById('progressFill').style.width = `${Math.max(0, Math.min(100, ((state.t_in_episode || 0) / Math.max(1, state.horizon || 1)) * 100))}%`;
+  document.getElementById('progressLeft').textContent = `${Math.max(0, Math.min(100, Math.round(((state.t_in_episode || 0) / Math.max(1, state.horizon || 1)) * 100)))}%`;
+  document.getElementById('progressRight').textContent = `${state.t_in_episode ?? 0} / ${state.horizon ?? 0}`;
+
+  const platforms = state.platforms || [];
+  renderPlatformList(document.getElementById('mainPlatforms'), platforms.filter(p => p.section === 'main'));
+  renderPlatformList(document.getElementById('suburbanPlatforms'), platforms.filter(p => p.section === 'suburban'));
+
+  renderList(
+    document.getElementById('queueList'),
+    state.queue || [],
+    'Queue is empty.',
+    (row) => {
+      const cat = catClass(row.category);
+      return `
+        <div class="list-item">
+          <div class="primary ${cat.text}">${escapeHtml(row.train_label)}</div>
+          <div class="secondary">${escapeHtml(row.category)} · wait ${escapeHtml(row.wait)} · ${escapeHtml(row.length_class)} · priority ${escapeHtml(row.priority)}${row.electrified_required ? ' · electrified' : ''}</div>
+        </div>
+      `;
+    }
+  );
+
+  renderList(
+    document.getElementById('arrivalList'),
+    state.next_arrivals || [],
+    'No future arrivals queued.',
+    (row) => {
+      const cat = catClass(row.category);
+      return `
+        <div class="list-item">
+          <div class="primary ${cat.text}">${escapeHtml(row.train_label)}</div>
+          <div class="secondary">arrives in ${escapeHtml(row.arrival_in)} · at t=${escapeHtml(row.scheduled_arrival)} · ${escapeHtml(row.length_class)} · priority ${escapeHtml(row.priority)}</div>
+        </div>
+      `;
+    }
+  );
+
+  renderList(
+    document.getElementById('allocationList'),
+    state.recent_allocations || [],
+    'No allocation events yet.',
+    (ev) => `
+      <div class="event-item">
+        <div class="kind">allocation · t=${escapeHtml(ev.t)}</div>
+        <div class="line good">PF ${escapeHtml(ev.platform_label)} → ${escapeHtml(ev.train_label)}</div>
+        <div class="line">${escapeHtml(ev.category)} · waited ${escapeHtml(ev.wait)} steps · dwell ${escapeHtml(ev.dwell)} steps</div>
+      </div>
+    `
+  );
+
+  renderList(
+    document.getElementById('alertList'),
+    state.recent_conflicts || [],
+    'No contention alerts.',
+    (ev) => `
+      <div class="event-item">
+        <div class="kind">conflict · t=${escapeHtml(ev.t)}</div>
+        <div class="line warn">PF ${escapeHtml(ev.platform_label)} lost bid on ${escapeHtml(ev.train_label)}</div>
+        <div class="line">highest priority claimant won; allocator resolved the platform contest</div>
+      </div>
+    `
+  );
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${proto}//${location.host}/ws`);
+  const dot = document.getElementById('liveDot');
+  const label = document.getElementById('liveLabel');
+  ws.onopen = () => { dot.classList.remove('down'); label.textContent = 'LIVE'; };
+  ws.onclose = () => { dot.classList.add('down'); label.textContent = 'RECONNECTING'; setTimeout(connect, 1500); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (msg) => render(JSON.parse(msg.data));
+}
+connect();
+</script>
+</body>
+</html>
