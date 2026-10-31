@@ -1,0 +1,24 @@
+{
+  "seed": 55,
+  "started_at": 1793449101.7914948,
+  "software_versions": {
+    "python": "3.10.7",
+    "torch": "2.14.1+cpu",
+    "numpy": "1.26.4",
+    "gymnasium": "0.29.1",
+    "pettingzoo": "1.24.3",
+    "stable-baselines3": "2.9.2",
+    "matplotlib": "3.9.2"
+  },
+  "hardware": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 158 Stepping 10, GenuineIntel",
+    "device_requested": "auto",
+    "cuda_available": false,
+    "cuda_device": null
+  },
+  "source_revision": "38e5d49ce23ae4f851ba1f50f87f6f0a058523f7",
+  "source_tree_dirty": true,
+  "training_seconds": 2.5383145000000695,
+  "completed_at": 1793449104.5416443
+}

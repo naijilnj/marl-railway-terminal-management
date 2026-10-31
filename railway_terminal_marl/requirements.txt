@@ -1,5 +1,6 @@
-pettingzoo
-stable-baselines3
-gymnasium
-fastapi
-uvicorn[standard]
+pettingzoo>=1.24
+stable-baselines3>=2.3
+gymnasium>=0.29,<1.0
+fastapi>=0.100
+uvicorn[standard]>=0.23
+matplotlib>=3.7

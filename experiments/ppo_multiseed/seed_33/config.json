@@ -1,0 +1,15 @@
+{
+  "algorithm": "centralized_shared_parameter_ppo",
+  "scenario": "moderate_traffic",
+  "seed": 33,
+  "total_timesteps": 512,
+  "coordination": "lowest_id",
+  "n_steps": 256,
+  "batch_size": 256,
+  "learning_rate": 0.0003,
+  "gamma": 0.98,
+  "ent_coef": 0.01,
+  "deterministic_torch": false,
+  "device": "auto",
+  "training_schedule_seed_rule": "base seed + episode index"
+}

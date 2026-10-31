@@ -1,0 +1,38 @@
+{
+  "algorithm": "centralized_shared_parameter_ppo",
+  "training_scenario": "moderate_traffic",
+  "training_seeds": [
+    11,
+    22,
+    33,
+    44,
+    55
+  ],
+  "test_profiles": [
+    "low_traffic",
+    "moderate_traffic",
+    "high_traffic",
+    "peak_hour",
+    "platform_disruption",
+    "extreme_stress"
+  ],
+  "test_scenario_seeds": [
+    1000001,
+    1000002
+  ],
+  "total_timesteps_per_seed": 512,
+  "coordination": "lowest_id",
+  "evaluation_coordination_methods": [
+    "lowest_id",
+    "random",
+    "coordinated"
+  ],
+  "training_test_seed_overlap": false,
+  "hardware_runtime_recorded_per_seed": true,
+  "additional_learning_architectures": [
+    "independent_ppo",
+    "mappo"
+  ],
+  "independent_training_note": "Each local policy is trained with other platforms held idle.",
+  "matching_controller_note": "Maximum-weight matching allocates from the full feasible graph and does not use policy actions; it is evaluated as a separate baseline."
+}
