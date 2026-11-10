@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from gymnasium import Env, spaces
 
+from .config import ScenarioConfig
 from .terminal_env import RailwayTerminusEnv
 
 
@@ -20,9 +21,19 @@ def split_actions(actions: np.ndarray, agents: List[str]) -> Dict[str, int]:
 class TerminusMultiAgentGymEnv(Env):
     metadata = {"render_modes": ["human"]}
 
-    def __init__(self, env: RailwayTerminusEnv):
+    def __init__(
+        self,
+        env: RailwayTerminusEnv,
+        scenario_factory: Optional[Callable[[int], ScenarioConfig]] = None,
+        seed: int = 0,
+        coordination: str = "lowest_id",
+    ):
         super().__init__()
         self.env = env
+        self.scenario_factory = scenario_factory
+        self.seed = seed
+        self.coordination = coordination
+        self.episode_count = 0
         self.agents = list(self.env.possible_agents)
         self._obs_dict = None
         sample_obs = self.env.observation_space(self.agents[0])
@@ -36,7 +47,18 @@ class TerminusMultiAgentGymEnv(Env):
         self.action_space = spaces.MultiDiscrete([sample_action.n] * len(self.agents))
 
     def reset(self, *, seed=None, options=None):
-        obs, infos = self.env.reset(seed=seed, options=options)
+        super().reset(seed=seed)
+        if self.scenario_factory is not None:
+            episode_seed = self.seed + self.episode_count if seed is None else seed
+            self.env = RailwayTerminusEnv(
+                scenario=self.scenario_factory(episode_seed),
+                seed=episode_seed,
+                coordination=self.coordination,
+            )
+            self.episode_count += 1
+            obs, infos = self.env.reset(seed=episode_seed, options=options)
+        else:
+            obs, infos = self.env.reset(seed=seed, options=options)
         self.agents = list(self.env.agents)
         self._obs_dict = obs
         flat_obs = flatten_observations(obs, self.agents)
@@ -56,7 +78,8 @@ class TerminusMultiAgentGymEnv(Env):
         info = {
             "agents": list(obs.keys()),
             "per_agent_rewards": rewards,
-            "episode_metrics": self.env.episode_metrics,
+            "episode_metrics": dict(self.env.episode_metrics),
+            "episode_seed": self.env.seed,
             "avg_wait": infos[next(iter(infos))]["avg_wait"] if infos else None,
             "trains_served": infos[next(iter(infos))]["trains_served"] if infos else None,
             "n_waiting": infos[next(iter(infos))]["n_waiting"] if infos else None,

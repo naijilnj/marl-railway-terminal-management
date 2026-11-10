@@ -1,0 +1,12 @@
+{
+  "independent_ppo": {
+    "actors": "separate local observation policies",
+    "other_platforms_during_training": "held idle",
+    "timesteps_per_platform": 256
+  },
+  "mappo": {
+    "actors": "parameter-shared decentralized local actors",
+    "critic": "centralized joint-observation critic",
+    "total_timesteps": 512
+  }
+}

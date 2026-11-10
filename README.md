@@ -2,14 +2,15 @@
 
 ## 1. Overview
 
-A railway-terminus platform-allocation system built with multi-agent
-reinforcement learning (MARL). One environment, one trained PPO policy,
-a live simulator, and a separate static dashboard, all built around a
-single running model.
+A synthetic railway-terminus platform-allocation research simulator with a
+PettingZoo environment, several learning/heuristic/optimization controllers,
+multi-seed experiments, live inference, and static dashboards. It is not an
+operational Indian Railways decision-support system.
 
-**Core design choice:** platforms are the agents. Trains wait in a
-shared queue; at each timestep, the policy decides which waiting train
-each *free* platform should claim.
+Platforms are PettingZoo agents and trains wait in a shared queue. The
+reference SB3 PPO policy receives all platform observations concatenated and
+selects one joint action vector. This is centralized joint-observation PPO,
+not independent PPO or MAPPO.
 
 | Concern | File |
 |---|---|
@@ -29,9 +30,10 @@ each *free* platform should claim.
 
 Each platform's observation vector is built from three groups of features:
 
-- **Platform features** — length-class one-hot, electrified flag, busy fraction
+- **Platform features** — length-class one-hot, encoded platform category,
+  busy/closure fraction
 - **Queue features** (per visible waiting train) — wait time, train length
-  class, electrification requirement, priority
+  class, electrification requirement, encoded train category/priority
 - **Global features** — normalized time, normalized queue size
 
 For a single platform, the observation length is:
@@ -60,12 +62,13 @@ where the last action ($a = Q$) means **wait / no-op**.
 Each tick, `terminal_env.py`:
 
 1. Collects claims from all free platforms.
-2. Resolves conflicts — **lowest platform id wins** ties on the same train.
-3. Rejects incompatible allocations (platform length class or
-   electrification doesn't match the train's requirements).
-4. Allocates valid trains to their claiming platform.
-5. Advances waiting times for everything still in the queue.
-6. Applies a small shared penalty scaled to queue size.
+2. Uses the configured resolver: lowest ID, seeded random, coordinated
+   matching over claims, or maximum-weight matching.
+3. Enforces train/platform category, length, electrification, closure,
+   turnaround-buffer, and approach-group constraints.
+4. Allocates valid trains and records lifecycle events.
+5. Advances waiting time and admits, diverts, or cancels trains explicitly.
+6. Applies the shared queue penalty.
 
 ### 2.4 Reward function
 
@@ -88,6 +91,8 @@ where:
 - $n$ — number of trains still waiting (shared across all platforms)
 
 Platform length ordering is **short < medium < long**, defined in `config.py`.
+The shared queue term is added to every agent reward and then summed by the
+Gym adapter, so its scalar contribution scales with the number of agents.
 
 ---
 
@@ -99,6 +104,9 @@ Training is off-the-shelf **Stable-Baselines3 PPO**, configured in `train.py`.
 > flattening adapter, `multiagent_adapter.py`, so the project trains on
 > Windows without SuperSuit's C++ build dependency.
 
+The adapter exposes the full concatenated observation and a joint action
+vector. It does not train a separate decentralized actor for every platform.
+
 | Hyperparameter | Value |
 |---|---|
 | Algorithm | PPO |
@@ -109,18 +117,21 @@ Training is off-the-shelf **Stable-Baselines3 PPO**, configured in `train.py`.
 | `gamma` | 0.98 |
 | `ent_coef` | 0.01 |
 
-This is **not** a custom MARL algorithm (no MAPPO, no QMIX) — it's a
-single shared PPO policy acting over a flattened view of the whole
-terminal (parameter sharing across all platform agents).
+The reference controller is centralized PPO over flattened global
+observations and a joint `MultiDiscrete` action. Separate implementations of
+independent local PPO and MAPPO are also available. FCFS, priority-first, and
+best-fit are operational heuristics; maximum-weight matching is an
+optimization controller.
 
 **Training flow:**
 
-1. Build a scenario from `config.py`.
+1. Build seeded scenario instances from `config.py`.
 2. Wrap the multi-agent environment with `multiagent_adapter.py`.
-3. Train PPO.
-4. Log per-episode metrics to `logs/metrics.jsonl`.
-5. Run one deterministic rollout and save `logs/events.json`.
-6. Save the model to `logs/ppo_terminus.zip`.
+3. Seed Python, NumPy, PyTorch, PPO, and environment randomization.
+4. Train PPO and log episode-level metrics.
+5. Save model/configuration/software/hardware metadata.
+6. Evaluate against shared held-out scenario seeds in
+   `experiments/ppo_multiseed/`.
 
 **PPO objective** (standard SB3 clipped surrogate — no custom loss added):
 
@@ -132,21 +143,23 @@ $$
 
 ## 4. Scenario / Data Generation
 
-`config.py` defines two scenario generators:
+`config.py` defines toy and synthetic MGR-style generators plus six
+configurable traffic profiles:
 
 - **`default_scenario()`** — 6 platforms, 24 trains, random-but-seeded timing.
 - **`mgr_chennai_central_scenario()`** — 17 platforms, 62 trains,
   approximating MGR Chennai Central's real structure: 12 main-terminal
   platforms (including bay platform **2A**) plus 5 suburban / Moore
   Market Complex platforms.
+- **`traffic_scenario(profile, seed)`** — low, moderate, high, peak-hour,
+  platform-disruption, and extreme-stress scenarios.
 
-Schedules, dwell times, labels, and train categories are synthesized
-from seeded randomness and label lists. Train names are MAS-flavored but
-**illustrative** — not pulled from a live timetable.
+Schedules, dwell times, labels, categories, delays, closures, and approach
+headways are synthetic/modelled assumptions. The checked-in Excel timetable
+and delay workbooks are not ingested by the current environment.
 
-> **Honest summary:** the station *structure* is modeled after MGR
-> Chennai Central; the train schedules are generated by code, not loaded
-> from a live railway feed.
+> The MGR-named layout is an approximation. Do not describe its timetable,
+> platform eligibility, or approach constraints as verified operating data.
 
 ---
 
@@ -169,6 +182,8 @@ browser. Each snapshot includes:
 - Recent allocation and conflict events
 - Per-episode and all-time KPIs
 - Utilization by section (main vs. suburban)
+- Train lifecycle states, platform compatibility/closures, approach-group
+  status, and time-average utilization
 
 ---
 
@@ -196,9 +211,30 @@ The three `live_*` UIs connect to the real running model through
 | `logs/metrics.jsonl` | One row per completed training episode |
 | `logs/events.json` | One deterministic rollout, used to build the static replay UI |
 
-These logs feed the two static surfaces (`dashboard.html` and
-`mgr_station_simulator.html`); the three live surfaces bypass them
-entirely and read straight from the running policy via WebSocket.
+The historical `logs/metrics.jsonl`, `logs/events.json`, and
+`logs/ppo_terminus.zip` predate the revised environment and are not held-out
+experimental evidence. `experiments/ppo_multiseed/` stores separate seeded
+runs, shared held-out evaluation results, summary CSV/JSON, and plots.
+
+Run the five-seed experiment from the nested project directory:
+
+```powershell
+Push-Location railway_terminal_marl
+python -m training.experiments --scenario moderate_traffic --timesteps 300000
+Pop-Location
+```
+
+`--include-other-architectures` additionally trains independent PPO and MAPPO;
+the independent actors currently train with other platforms held idle, so
+that training-distribution difference is recorded in experiment metadata.
+Centralized PPO is evaluated with the lowest-ID, seeded-random, and
+coordinated claim-resolvers. Maximum-weight matching ignores submitted policy
+actions, so it is reported as a separate optimization baseline.
+The checked-in five-seed pilot used only 512 PPO timesteps per seed and two
+held-out scenarios per profile; it is pipeline validation, not evidence of
+convergence or algorithm superiority.
+The plots and aggregate CSV/JSON are generated from the same held-out
+scenarios used by the baselines.
 
 ---
 
@@ -206,12 +242,19 @@ entirely and read straight from the running policy via WebSocket.
 
 Working now:
 
-- MARL environment logic
-- Platform occupancy and train allocation
+- Synthetic configurable traffic profiles and reproducible train lifecycle
+- Turnaround, compatibility, closures, and simplified approach-group limits
+- Four allocation resolvers and three operational heuristics
+- Centralized PPO, independent PPO, and MAPPO implementations
+- Five-seed experiment pipeline and held-out evaluation artifacts
 - Live WebSocket-fed UI
-- Model training and inference
-- Seeded scenario generation
-- Metrics and replay logs
+- Model training, metrics, and replay logs
+
+The approach-group model is an intentionally simplified resource constraint,
+not a validated signaling/interlocking simulation. No manuscript is present
+in the repository for a code-to-paper comparison. See
+`PROJECT_ARCHITECTURE_AUDIT.md` for the verified baseline and implementation
+limitations.
 
 ---
 
@@ -225,6 +268,8 @@ Multi-agent flattening adapter .... multiagent_adapter.py
 Live runner ........................ live_runner.py
 Live HTTP/WebSocket app ............ app.py
 Static dashboard build ............. build.py
+Research audit ..................... PROJECT_ARCHITECTURE_AUDIT.md
+Experiment runner .................. training/experiments.py
 ```
 
 ## Railway deployment

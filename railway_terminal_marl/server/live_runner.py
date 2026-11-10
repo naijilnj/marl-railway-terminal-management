@@ -118,6 +118,8 @@ class LiveRunner:
                     "horizon": 0,
                     "platforms": [],
                     "queue": [],
+                    "train_lifecycle": [],
+                    "approach_groups": {},
                     "events": [],
                     "recent_allocations": [],
                     "recent_conflicts": [],
@@ -163,6 +165,9 @@ class LiveRunner:
                 platforms.append({
                     "id": p.id, "label": p.label, "section": p.section,
                     "length_class": p.length_class, "electrified": p.electrified,
+                    "compatible_categories": p.compatible_categories,
+                    "approach_group": p.approach_group,
+                    "closure_intervals": p.closure_intervals,
                     "ready_at": self._env.platform_ready_at.get(f"platform_{p.id}", 0),
                     "occupied": bool(occ),
                     "occupant": None if not occ else {
@@ -201,6 +206,14 @@ class LiveRunner:
             main_util = (sum(1 for p in main_platforms if p["occupied"]) / len(main_platforms)) if main_platforms else 0.0
             suburban_util = (sum(1 for p in suburban_platforms if p["occupied"]) / len(suburban_platforms)) if suburban_platforms else 0.0
             overall_util = (sum(1 for p in platforms if p["occupied"]) / len(platforms)) if platforms else 0.0
+            elapsed = max(1, env.t)
+            occupied_so_far = sum(
+                max(0, min(end, env.t) - start)
+                for _, start, end in env.occupancy_intervals
+            )
+            time_average_util = (
+                occupied_so_far / (len(platforms) * elapsed) if platforms else 0.0
+            )
 
             ep_avg_wait = (self._episode_wait_total / self._episode_served) if self._episode_served else 0.0
             all_time_served = self._cumulative_served + self._episode_served
@@ -229,12 +242,23 @@ class LiveRunner:
                     "all_time_invalid": self._cumulative_invalid + env.invalid_actions,
                     "episodes_completed": self._episodes_completed,
                     "waiting_now": len(env.queue),
+                    "time_average_utilization": round(time_average_util, 3),
                 },
                 "utilization": {
                     "overall": round(overall_util, 3),
                     "main": round(main_util, 3),
                     "suburban": round(suburban_util, 3),
+                    "time_average": round(time_average_util, 3),
                 },
+                "train_lifecycle": [
+                    {
+                        "train_id": train.id,
+                        "label": train.label,
+                        "status": env.train_states[train.id],
+                    }
+                    for train in env.scenario.trains
+                ],
+                "approach_groups": dict(env.approach_busy_until),
                 "system": {
                     "running": self._running,
                     "steps_per_sec": self.steps_per_sec,
